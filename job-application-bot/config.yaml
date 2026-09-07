@@ -1,8 +1,0 @@
-excel_file: input/job-tracker.xlsx
-sheet_name: Jobs
-browser:
-  headless: false
-  slow_mo_ms: 100
-application:
-  max_jobs_per_run: 1
-  require_manual_confirmation_before_submit: true
