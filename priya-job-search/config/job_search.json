@@ -1,0 +1,24 @@
+{
+  "queries": [
+    "Java Backend Developer",
+    "Java Developer Spring Boot",
+    "Java Microservices",
+    "Spring Boot Backend",
+    "Java Software Engineer"
+  ],
+  "locations": [
+    "Pune, Maharashtra, India",
+    "Gurugram, Haryana, India",
+    "Noida, Uttar Pradesh, India",
+    "Bengaluru, Karnataka, India",
+    "Hyderabad, Telangana, India",
+    "Remote India"
+  ],
+  "max_experience_requirement": 5,
+  "current_experience": 3,
+  "results_per_search": 10,
+  "pages_per_search": 1,
+  "headless": false,
+  "linkedin_posted_within": "r86400",
+  "max_experience_years": 5
+}
