@@ -155,7 +155,7 @@ END ORIGINAL RESUME
 Analyze the Job Description carefully and create a tailored version of
 the original resume.
 
-The goal is to maximize the truthful match between the candidate's
+The goal is to maximize the match between the candidate's
 existing background and this specific Job Description.
 
 ======================================================================
@@ -217,15 +217,13 @@ Always make prioritization based on the actual JD.
 ======================================================================
 
 Rewrite the PROFILE section so that it presents the candidate as the
-strongest truthful candidate for this specific role.
+strongest candidate for this specific role.
 
 Emphasize experience and technologies that are most relevant to the JD.
 
 Use JD terminology when it accurately corresponds to experience already
 supported by the original resume.
 
-Do not add technologies, experience, metrics, or claims that are not
-supported by the original resume.
 
 Keep approximately 3 years of professional experience.
 
@@ -262,7 +260,6 @@ meaning.
 Do NOT:
 
 - Invent responsibilities.
-- Invent technologies.
 - Invent metrics.
 - Invent achievements.
 - Change employment dates.
@@ -275,8 +272,6 @@ Do NOT:
 For example, if the JD requires Spring Boot and the resume already
 contains Spring Boot experience, make that experience prominent.
 
-If the JD requires Kafka but Kafka does not appear in the resume,
-do not add Kafka.
 
 ======================================================================
 5. TAILOR PROJECTS
@@ -317,7 +312,6 @@ Only include skills that are already supported by the original resume.
 Use the JD's terminology when it accurately corresponds to an existing
 skill.
 
-Do not add missing JD technologies simply to improve ATS matching.
 
 Do not keyword-stuff the resume.
 
@@ -329,25 +323,7 @@ Keep all existing skill categories and substantive skills.
 
 This is extremely important.
 
-The original resume is the ONLY source of truth.
-
-Never invent or imply that the candidate has experience with a technology
-simply because it appears in the JD.
-
-For example, if the JD says:
-
-"Experience with Kafka, Kubernetes, and AWS required"
-
-but the original resume does not contain Kafka, Kubernetes, or AWS,
-do NOT add them.
-
-Instead, maximize the match using the experience that actually exists,
-such as Java, Spring Boot, microservices, REST APIs, Redis, SQL,
-distributed systems, CI/CD, etc., if relevant.
-
 Do not fabricate missing experience.
-
-Do not convert JD requirements into candidate skills.
 
 Do not infer experience merely because two technologies are commonly
 used together.
@@ -473,8 +449,87 @@ ATS FRIENDLY
 +
 TRUTHFUL
 
+
 ======================================================================
-11. DO NOT EXAGGERATE SENIORITY
+11. CURRENTLY EXPLORING — JD-RELEVANT SKILLS
+=====================================================================
+
+Compare the target Job Description with my Master Resume.
+
+In addition to tailoring the primary resume content, review the
+following approved list of technologies, tools, frameworks, databases,
+architectures, and engineering concepts:
+
+Google Cloud, BigQuery, AWS, Cloud Functions, Pub/Sub,
+Docker, Kubernetes, Unit Testing, Integration Testing, Azure Cloud,
+Event-Driven Architecture, PostgreSQL, Cassandra, NoSQL Databases,
+Performance Optimization, Test-Driven Development (TDD), MongoDB,
+Next.js, Angular, Infrastructure as Code, Terraform, ARM Templates,
+CloudFormation.
+
+Identify skills from this list that are explicitly relevant to the
+target Job Description but are NOT already supported by my Master
+Resume.
+
+Select a MAXIMUM of 6 of the most relevant skills.
+
+Prioritize the skills that:
+
+1. Are explicitly required or strongly preferred in the JD.
+2. Appear multiple times in the JD.
+3. Are most relevant to the target role.
+4. Would be valuable for me to learn for this type of position.
+
+Add the selected skills at the VERY END of the Skills section under a
+clearly labeled category:
+
+\textbf{Currently Exploring} & Skill 1 $\bullet$ Skill 2 $\bullet$
+Skill 3 $\bullet$ Skill 4 $\bullet$ Skill 5 $\bullet$ Skill 6
+
+These skills must be clearly presented as technologies I am currently
+exploring/learning and must NOT be represented as existing professional
+experience.
+
+Do NOT add these skills to:
+
+* Profile
+* Work Experience
+* Project descriptions
+* Professional experience statements
+* Achievements
+* Metrics
+
+Do NOT claim production experience, professional experience, years of
+experience, proficiency, or completed projects involving these skills.
+
+If fewer than 6 skills from the approved list are relevant to the JD,
+include only the relevant ones.
+
+Do not force unrelated skills simply to reach 6.
+
+Also generate a JSON field named:
+
+"currently_exploring"
+
+containing the selected skills.
+
+Example:
+
+{
+"currently_exploring": [
+"Docker",
+"Kubernetes",
+"PostgreSQL",
+"AWS"
+]
+}
+
+The final Skills section should clearly distinguish between my existing
+professional skills and technologies I am currently exploring.
+
+
+======================================================================
+12. DO NOT EXAGGERATE SENIORITY
 ======================================================================
 
 The resume represents approximately 3 years of professional experience.
@@ -489,7 +544,7 @@ appropriate for the role.
 Do not change the candidate's actual job title.
 
 ======================================================================
-12. LATEX OUTPUT
+13. LATEX OUTPUT
 ======================================================================
 
 Return ONLY the complete LaTeX source code for the tailored resume.
@@ -519,7 +574,7 @@ Preserve the formatting and overall visual structure of the original
 resume.
 
 ======================================================================
-13. FINAL INTERNAL VALIDATION
+14. FINAL INTERNAL VALIDATION
 ======================================================================
 
 Before returning the answer, internally verify ALL of the following:
