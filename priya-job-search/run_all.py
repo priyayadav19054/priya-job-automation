@@ -1,5 +1,6 @@
 from linkedin.linkedin_scraper import run_linkedin
 from naukri.naukri_scraper import run_naukri
+from indeed.indeed_scraper import run_indeed
 from common.pipeline import combine_and_write
 from common.config import load_config
 
@@ -10,6 +11,7 @@ def main():
 
     linkedin_jobs = []
     naukri_jobs = []
+    indeed_jobs = []
 
     print("[1/2] LinkedIn")
     try:
@@ -27,7 +29,15 @@ def main():
         print(f"Naukri failed: {e}")
         print("Continuing with available results...")
 
-    combine_and_write(linkedin_jobs + naukri_jobs, config)
+    print("\n[3/3] Indeed")
+    try:
+        indeed_jobs = run_indeed(config)
+        print(f"Indeed: {len(indeed_jobs)} jobs captured")
+    except Exception as e:
+        print(f"Indeed failed: {e}")
+        print("Continuing with available results...")
+
+    combine_and_write(linkedin_jobs + naukri_jobs + indeed_jobs, config)
 
 if __name__ == "__main__":
     main()

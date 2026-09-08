@@ -724,29 +724,58 @@ def normalize_text(text):
 
 
 def normalize_url(url):
-    """Normalize job URLs for duplicate detection."""
+    """
+    Normalize job URLs for duplicate detection.
+
+    Indeed uses the `jk` query parameter as the unique job identifier.
+    Other query parameters are tracking/session parameters and are
+    intentionally discarded.
+    """
     if not url:
         return ""
 
-    url = url.strip().lower()
+    url = str(url).strip()
 
-    # Remove query parameters and fragments
-    url = url.split("?")[0]
-    url = url.split("#")[0]
+    try:
+        from urllib.parse import urlparse, parse_qs
 
-    # Remove trailing slash
-    url = url.rstrip("/")
+        parsed = urlparse(url)
 
-    return url
+        # Indeed job URLs:
+        # https://in.indeed.com/rc/clk?jk=<job_id>&...
+        if "indeed.com" in parsed.netloc.lower():
+            params = parse_qs(parsed.query)
+            job_key = params.get("jk", [None])[0]
+
+            if job_key:
+                return (
+                    f"{parsed.scheme}://"
+                    f"{parsed.netloc}"
+                    f"{parsed.path}?jk={job_key}"
+                )
+
+        # Generic URL normalization
+        normalized = (
+            f"{parsed.scheme}://"
+            f"{parsed.netloc}"
+            f"{parsed.path}"
+        )
+
+        return normalized.rstrip("/")
+
+    except Exception:
+        return url.rstrip("/")
 
 
-def dedupe(jobs):
+def dedupe(jobs, debug=False):
     """
     Remove duplicate jobs using multiple levels of matching.
 
     Priority:
     1. Exact normalized URL
     2. Source + normalized title + company
+
+    When debug=True, print exactly which jobs are removed and why.
     """
 
     seen_urls = set()
@@ -755,9 +784,13 @@ def dedupe(jobs):
     out = []
 
     for job in jobs:
-        source = normalize_text(job.get("source", ""))
-        title = normalize_text(job.get("title", ""))
-        company = normalize_text(job.get("company", ""))
+        source_raw = job.get("source", "")
+        title_raw = job.get("title", "")
+        company_raw = job.get("company", "")
+
+        source = normalize_text(source_raw)
+        title = normalize_text(title_raw)
+        company = normalize_text(company_raw)
         url = normalize_url(job.get("url", ""))
 
         # -----------------------------------------------------------
@@ -767,6 +800,12 @@ def dedupe(jobs):
             url_key = url
 
             if url_key in seen_urls:
+                if debug:
+                    print(
+                        f"  DEDUPE REMOVE [URL] "
+                        f"{source_raw} | {title_raw} | {company_raw}"
+                    )
+                    print(f"    URL: {url}")
                 continue
 
             seen_urls.add(url_key)
@@ -781,6 +820,12 @@ def dedupe(jobs):
         )
 
         if identity_key in seen_job_identity:
+            if debug:
+                print(
+                    f"  DEDUPE REMOVE [TITLE+COMPANY] "
+                    f"{source_raw} | {title_raw} | {company_raw}"
+                )
+                print(f"    Identity: {identity_key}")
             continue
 
         seen_job_identity.add(identity_key)
@@ -951,21 +996,98 @@ def write_excel(jobs, path):
 # Main pipeline
 # -------------------------------------------------------------------
 
+def experience_rejection_reason(job, max_exp):
+    """
+    Return the exact experience requirement that causes a job to be
+    rejected, or None when the job is eligible.
+
+    This is diagnostic only; the actual eligibility rule remains the
+    same as eligible().
+    """
+    experience_text = job.get("experience", "") or ""
+    description_text = job.get("description", "") or ""
+    combined_text = f"{experience_text} {description_text}"
+
+    ranges = experience_ranges(combined_text)
+
+    for minimum, maximum in ranges:
+        if minimum > max_exp:
+            if maximum is None:
+                return f"{minimum}+ years"
+            return f"{minimum}-{maximum} years"
+
+        if maximum is not None and maximum > max_exp:
+            return f"{minimum}-{maximum} years"
+
+    return None
+
+
 def combine_and_write(jobs, config):
     print("\nCombining results...")
 
-    jobs = dedupe(jobs)
+    print(f"Jobs received from scrapers: {len(jobs)}")
 
-    jobs = [
-        j
-        for j in jobs
-        if eligible(
-            j,
-            config["max_experience_requirement"],
-        )
-    ]
+    # ---------------------------------------------------------------
+    # Stage 1: deduplication
+    # ---------------------------------------------------------------
+    before_dedupe = len(jobs)
+    jobs = dedupe(jobs, debug=True)
+    after_dedupe = len(jobs)
 
+    print(
+        f"After deduplication: {after_dedupe} "
+        f"(removed {before_dedupe - after_dedupe})"
+    )
+
+    # ---------------------------------------------------------------
+    # Stage 2: experience filtering
+    # ---------------------------------------------------------------
+    max_exp = config["max_experience_requirement"]
+    eligible_jobs = []
+    rejected_jobs = []
+
+    for job in jobs:
+        reason = experience_rejection_reason(job, max_exp)
+
+        if reason is None:
+            eligible_jobs.append(job)
+        else:
+            rejected_jobs.append((job, reason))
+
+    print(
+        f"After experience filtering: {len(eligible_jobs)} "
+        f"(removed {len(rejected_jobs)})"
+    )
+
+    if rejected_jobs:
+        print("\nExperience-filtered jobs:")
+        for job, reason in rejected_jobs:
+            print(
+                f"  REMOVED: {job.get('source', '')} | "
+                f"{job.get('title', '')} | "
+                f"{job.get('company', '')}"
+            )
+            print(f"    Reason: {reason}")
+            print(
+                f"    Experience field: "
+                f"{job.get('experience', '')!r}"
+            )
+
+    jobs = eligible_jobs
+
+    # ---------------------------------------------------------------
+    # Stage 3: ranking
+    # ---------------------------------------------------------------
     jobs.sort(key=rank, reverse=True)
+
+    print("\nFinal jobs by source:")
+    source_counts = {}
+    for job in jobs:
+        source = job.get("source", "Unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+
+    for source, count in source_counts.items():
+        print(f"  {source}: {count}")
 
     out_dir = Path("jobs")
     out_dir.mkdir(exist_ok=True)
@@ -984,6 +1106,6 @@ def combine_and_write(jobs, config):
         encoding="utf-8",
     )
 
-    print(f"Final jobs: {len(jobs)}")
+    print(f"\nFinal jobs: {len(jobs)}")
     print(f"Excel: {xlsx}")
     print(f"JSON: {js}")
