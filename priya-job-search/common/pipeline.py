@@ -465,7 +465,8 @@ Docker, Kubernetes, Unit Testing, Integration Testing, Azure Cloud,
 Event-Driven Architecture, PostgreSQL, Cassandra, NoSQL Databases,
 Performance Optimization, Test-Driven Development (TDD), MongoDB,
 Next.js, Angular, Infrastructure as Code, Terraform, ARM Templates,
-CloudFormation.
+CloudFormation, JUnit or Mockito, Hibernate, JPA, AWS Cloud services,
+kafka, messaging systems,
 
 Identify skills from this list that are explicitly relevant to the
 target Job Description but are NOT already supported by my Master
@@ -483,9 +484,10 @@ Prioritize the skills that:
 Add the selected skills at the VERY END of the Skills section under a
 clearly labeled category:
 
-\fontsize{0.05pt}{0.05pt}\selectfont\textbf{Currently Exploring} &
-{\fontsize{0.05pt}{0.05pt}\selectfont skill1 $\bullet$ skill2 $\bullet$ skill3
-$\bullet$ skill4 $\bullet$ skill5 $\bullet$ skill6 $\bullet$ skill7} \\
+\textbf{\fontsize{0.05pt}{0.05pt}\selectfont Currently Exploring} &
+{\fontsize{0.05pt}{0.05pt}\selectfont skill1 $\bullet$ skill2
+$\bullet$ skill3 $\bullet$ skill4 $\bullet$ skill5
+$\bullet$ skill6 $\bullet$ skill6} \\
 
 
 These skills must be clearly presented as technologies I am currently
