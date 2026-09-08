@@ -625,63 +625,133 @@ def experience_ranges(text):
     Extract explicit experience requirements from text.
 
     Examples:
-        "3-5 years"      -> [(3, 5)]
-        "2 to 4 years"   -> [(2, 4)]
-        "5+ years"       -> [(5, None)]
-        "3 years"        -> [(3, 3)]
+        "3-5 years"        -> [(3, 5)]
+        "2 to 4 years"     -> [(2, 4)]
+        "5+ years"         -> [(5, None)]
+        "5 or more years"  -> [(5, None)]
+        "minimum 3 years"  -> [(3, None)]
+        "at least 3 years" -> [(3, None)]
+        "3 years"          -> [(3, None)]
+
+    A plain "N years" requirement is treated as a minimum requirement,
+    not an exact requirement.
     """
     if not text:
         return []
 
-    t = text.lower().replace("–", "-").replace("—", "-")
+    t = str(text).lower().replace("–", "-").replace("—", "-")
 
     ranges = []
 
-    # Examples: 3-5 years, 3 to 5 years
+    def add_range(minimum, maximum):
+        item = (
+            int(minimum),
+            None if maximum is None else int(maximum),
+        )
+
+        if item not in ranges:
+            ranges.append(item)
+
+    # ---------------------------------------------------------------
+    # Explicit ranges:
+    #   3-5 years
+    #   3 to 5 years
+    # ---------------------------------------------------------------
     for match in re.finditer(
         r"\b(\d+)\s*(?:-|to)\s*(\d+)\s*(?:years?|yrs?)\b",
         t,
     ):
         minimum = int(match.group(1))
         maximum = int(match.group(2))
-        ranges.append((minimum, maximum))
 
-    # Examples: 5+ years, 5 or more years
+        if minimum <= maximum:
+            add_range(minimum, maximum)
+
+    # ---------------------------------------------------------------
+    # Minimum requirements:
+    #   5+ years
+    #   5 or more years
+    # ---------------------------------------------------------------
     for match in re.finditer(
         r"\b(\d+)\s*(?:\+|or\s+more)\s*(?:years?|yrs?)\b",
         t,
     ):
-        minimum = int(match.group(1))
-        ranges.append((minimum, None))
+        add_range(match.group(1), None)
 
-    # Examples: 3 years, 3 yrs
+    # ---------------------------------------------------------------
+    # Explicit minimum wording:
+    #   minimum 3 years
+    #   minimum of 3 years
+    #   at least 3 years
+    # ---------------------------------------------------------------
+    for match in re.finditer(
+        r"\b(?:minimum|at\s+least)"
+        r"(?:\s+of)?\s*(\d+)\s*(?:years?|yrs?)\b",
+        t,
+    ):
+        add_range(match.group(1), None)
+
+    # ---------------------------------------------------------------
+    # Plain "N years".
+    #
+    # Only treat it as an experience requirement when nearby text
+    # indicates experience/employment/role context.
+    # ---------------------------------------------------------------
     for match in re.finditer(
         r"\b(\d+)\s*(?:years?|yrs?)\b",
         t,
     ):
         value = int(match.group(1))
 
-        # Don't duplicate numbers that were already captured as part
-        # of a range such as "3-5 years".
-        if not any(
+        if any(
             minimum == value
             and (
-                maximum == value
-                or maximum is None
+                maximum is None
+                or maximum == value
             )
             for minimum, maximum in ranges
         ):
-            ranges.append((value, value))
+            continue
+
+        start = max(0, match.start() - 60)
+        end = min(len(t), match.end() + 60)
+        context = t[start:end]
+
+        experience_context = re.search(
+            r"(?:experience|exp\.?|professional|industry|"
+            r"development|software|backend|java|python|engineering)",
+            context,
+        )
+
+        if experience_context:
+            add_range(value, None)
 
     return ranges
 
 
-def eligible(job, max_exp):
+def eligible(job, candidate_exp):
     """
-    A job is eligible only if every explicit experience requirement
-    found in its Experience field and Description is within max_exp.
+    Determine whether the candidate is compatible with the job's
+    experience requirement.
 
-    Jobs with no explicit experience requirement are allowed.
+    Candidate experience is 3 years.
+
+    Rules:
+
+        0-2 years  -> eligible
+        1-3 years  -> eligible
+        2-7 years  -> eligible
+        3-5 years  -> eligible
+        3+ years   -> eligible
+        4-7 years  -> NOT eligible
+        5+ years   -> NOT eligible
+
+    A lower experience requirement is not a reason to reject a job.
+
+    A bounded range is accepted when candidate_exp falls inside it.
+
+    A minimum-only requirement is accepted when candidate_exp is greater
+    than or equal to the minimum.
     """
 
     experience_text = job.get("experience", "") or ""
@@ -696,12 +766,12 @@ def eligible(job, max_exp):
 
     for minimum, maximum in ranges:
 
-        # "6+ years" -> reject
-        if minimum > max_exp:
+        # Candidate does not meet the minimum requirement.
+        if candidate_exp < minimum:
             return False
 
-        # "3-7 years" -> reject because maximum exceeds limit
-        if maximum is not None and maximum > max_exp:
+        # Candidate is above the maximum of a bounded range.
+        if maximum is not None and candidate_exp > maximum:
             return False
 
     return True
@@ -996,27 +1066,32 @@ def write_excel(jobs, path):
 # Main pipeline
 # -------------------------------------------------------------------
 
-def experience_rejection_reason(job, max_exp):
+def experience_rejection_reason(job, candidate_exp):
     """
-    Return the exact experience requirement that causes a job to be
-    rejected, or None when the job is eligible.
+    Return the exact experience requirement that causes a job to
+    be rejected, or None when the job is eligible.
 
-    This is diagnostic only; the actual eligibility rule remains the
-    same as eligible().
+    A lower experience requirement is allowed.
     """
+
     experience_text = job.get("experience", "") or ""
     description_text = job.get("description", "") or ""
+
     combined_text = f"{experience_text} {description_text}"
 
     ranges = experience_ranges(combined_text)
 
     for minimum, maximum in ranges:
-        if minimum > max_exp:
+
+        # Candidate does not meet the minimum.
+        if candidate_exp < minimum:
             if maximum is None:
                 return f"{minimum}+ years"
+
             return f"{minimum}-{maximum} years"
 
-        if maximum is not None and maximum > max_exp:
+        # Candidate exceeds a bounded range.
+        if maximum is not None and candidate_exp > maximum:
             return f"{minimum}-{maximum} years"
 
     return None
@@ -1031,7 +1106,12 @@ def combine_and_write(jobs, config):
     # Stage 1: deduplication
     # ---------------------------------------------------------------
     before_dedupe = len(jobs)
-    jobs = dedupe(jobs, debug=True)
+
+    jobs = dedupe(
+        jobs,
+        debug=True,
+    )
+
     after_dedupe = len(jobs)
 
     print(
@@ -1042,17 +1122,39 @@ def combine_and_write(jobs, config):
     # ---------------------------------------------------------------
     # Stage 2: experience filtering
     # ---------------------------------------------------------------
-    max_exp = config["max_experience_requirement"]
+    #
+    # This is the candidate's actual experience, not a maximum allowed
+    # experience requirement.
+    #
+    # A candidate with 3 years can apply to:
+    #   0-2, 1-3, 2-5, 2-7, 3-5, 3+ years
+    #
+    # But not:
+    #   4-7, 5+, 6-10, etc.
+    # ---------------------------------------------------------------
+    candidate_exp = config.get(
+        "candidate_experience",
+        3,
+    )
+
     eligible_jobs = []
     rejected_jobs = []
 
     for job in jobs:
-        reason = experience_rejection_reason(job, max_exp)
+        reason = experience_rejection_reason(
+            job,
+            candidate_exp,
+        )
 
         if reason is None:
             eligible_jobs.append(job)
         else:
-            rejected_jobs.append((job, reason))
+            rejected_jobs.append(
+                (
+                    job,
+                    reason,
+                )
+            )
 
     print(
         f"After experience filtering: {len(eligible_jobs)} "
@@ -1061,13 +1163,18 @@ def combine_and_write(jobs, config):
 
     if rejected_jobs:
         print("\nExperience-filtered jobs:")
+
         for job, reason in rejected_jobs:
             print(
                 f"  REMOVED: {job.get('source', '')} | "
                 f"{job.get('title', '')} | "
                 f"{job.get('company', '')}"
             )
-            print(f"    Reason: {reason}")
+
+            print(
+                f"    Reason: {reason}"
+            )
+
             print(
                 f"    Experience field: "
                 f"{job.get('experience', '')!r}"
@@ -1078,24 +1185,42 @@ def combine_and_write(jobs, config):
     # ---------------------------------------------------------------
     # Stage 3: ranking
     # ---------------------------------------------------------------
-    jobs.sort(key=rank, reverse=True)
+    jobs.sort(
+        key=rank,
+        reverse=True,
+    )
 
     print("\nFinal jobs by source:")
+
     source_counts = {}
+
     for job in jobs:
-        source = job.get("source", "Unknown")
-        source_counts[source] = source_counts.get(source, 0) + 1
+        source = job.get(
+            "source",
+            "Unknown",
+        )
+
+        source_counts[source] = (
+            source_counts.get(source, 0) + 1
+        )
 
     for source, count in source_counts.items():
-        print(f"  {source}: {count}")
+        print(
+            f"  {source}: {count}"
+        )
 
     out_dir = Path("jobs")
-    out_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(
+        exist_ok=True
+    )
 
     xlsx = out_dir / "job-tracker.xlsx"
     js = out_dir / "jobs.json"
 
-    write_excel(jobs, xlsx)
+    write_excel(
+        jobs,
+        xlsx,
+    )
 
     js.write_text(
         json.dumps(
@@ -1106,6 +1231,14 @@ def combine_and_write(jobs, config):
         encoding="utf-8",
     )
 
-    print(f"\nFinal jobs: {len(jobs)}")
-    print(f"Excel: {xlsx}")
-    print(f"JSON: {js}")
+    print(
+        f"\nFinal jobs: {len(jobs)}"
+    )
+
+    print(
+        f"Excel: {xlsx}"
+    )
+
+    print(
+        f"JSON: {js}"
+    )
