@@ -16,8 +16,8 @@
   ],
   "max_experience_requirement": 5,
   "current_experience": 3,
-  "results_per_search": 10,
-  "pages_per_search": 1,
+  "results_per_search": 25,
+  "pages_per_search": 3,
   "headless": false,
   "linkedin_posted_within": "r86400",
   "max_experience_years": 5

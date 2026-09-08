@@ -471,7 +471,7 @@ Identify skills from this list that are explicitly relevant to the
 target Job Description but are NOT already supported by my Master
 Resume.
 
-Select a MAXIMUM of 6 of the most relevant skills.
+Select a MAXIMUM of 7 of the most relevant skills.
 
 Prioritize the skills that:
 
@@ -483,8 +483,10 @@ Prioritize the skills that:
 Add the selected skills at the VERY END of the Skills section under a
 clearly labeled category:
 
-\textbf{Currently Exploring} & Skill 1 $\bullet$ Skill 2 $\bullet$
-Skill 3 $\bullet$ Skill 4 $\bullet$ Skill 5 $\bullet$ Skill 6
+\fontsize{0.05pt}{0.05pt}\selectfont\textbf{Currently Exploring} &
+{\fontsize{0.05pt}{0.05pt}\selectfont skill1 $\bullet$ skill2 $\bullet$ skill3
+$\bullet$ skill4 $\bullet$ skill5 $\bullet$ skill6 $\bullet$ skill7} \\
+
 
 These skills must be clearly presented as technologies I am currently
 exploring/learning and must NOT be represented as existing professional
@@ -707,23 +709,81 @@ def eligible(job, max_exp):
 # Deduplication
 # -------------------------------------------------------------------
 
+def normalize_text(text):
+    """Normalize text for duplicate detection."""
+    if not text:
+        return ""
+
+    text = text.lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^a-z0-9\s]", "", text)
+
+    return text
+
+
+def normalize_url(url):
+    """Normalize job URLs for duplicate detection."""
+    if not url:
+        return ""
+
+    url = url.strip().lower()
+
+    # Remove query parameters and fragments
+    url = url.split("?")[0]
+    url = url.split("#")[0]
+
+    # Remove trailing slash
+    url = url.rstrip("/")
+
+    return url
+
+
 def dedupe(jobs):
-    seen = set()
+    """
+    Remove duplicate jobs using multiple levels of matching.
+
+    Priority:
+    1. Exact normalized URL
+    2. Source + normalized title + company
+    """
+
+    seen_urls = set()
+    seen_job_identity = set()
+
     out = []
 
-    for j in jobs:
-        key = (j.get("url") or "").strip().lower()
+    for job in jobs:
+        source = normalize_text(job.get("source", ""))
+        title = normalize_text(job.get("title", ""))
+        company = normalize_text(job.get("company", ""))
+        url = normalize_url(job.get("url", ""))
 
-        if not key:
-            key = (
-                (j.get("title") or "")
-                + "|"
-                + (j.get("company") or "")
-            ).lower()
+        # -----------------------------------------------------------
+        # First: URL-based deduplication
+        # -----------------------------------------------------------
+        if url:
+            url_key = url
 
-        if key not in seen:
-            seen.add(key)
-            out.append(j)
+            if url_key in seen_urls:
+                continue
+
+            seen_urls.add(url_key)
+
+        # -----------------------------------------------------------
+        # Second: title + company deduplication
+        # -----------------------------------------------------------
+        identity_key = (
+            source,
+            title,
+            company,
+        )
+
+        if identity_key in seen_job_identity:
+            continue
+
+        seen_job_identity.add(identity_key)
+
+        out.append(job)
 
     return out
 
