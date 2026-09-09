@@ -204,7 +204,7 @@ scalability, or large-scale data, emphasize the candidate's Redis
 distributed caching, microservices, distributed systems, API, and
 20M+ record data-processing experience.
 
-If the JD emphasizes AI, LLMs, RAG, vector databases, LangGraph, or
+If the JD emphasizes AI, LLM, RAG, vector databases, LangGraph, or
 prompt engineering, emphasize the Document Q&A Agent project and the
 AI-related skills actually present in the resume.
 
@@ -224,7 +224,6 @@ Emphasize experience and technologies that are most relevant to the JD.
 Use JD terminology when it accurately corresponds to experience already
 supported by the original resume.
 
-
 Keep approximately 3 years of professional experience.
 
 ======================================================================
@@ -238,8 +237,8 @@ You may:
 
 - Reorder existing bullets.
 - Rewrite bullets for clarity and stronger technical relevance.
-- Emphasize technologies important to the JD when those technologies are
-  already present in the candidate's experience.
+- Emphasize technologies important to the JD when those technologies
+  are already present in the candidate's experience.
 - Use terminology from the JD when it accurately describes work actually
   performed.
 - Make relevant technical details more prominent.
@@ -271,7 +270,6 @@ Do NOT:
 
 For example, if the JD requires Spring Boot and the resume already
 contains Spring Boot experience, make that experience prominent.
-
 
 ======================================================================
 5. TAILOR PROJECTS
@@ -311,7 +309,6 @@ Only include skills that are already supported by the original resume.
 
 Use the JD's terminology when it accurately corresponds to an existing
 skill.
-
 
 Do not keyword-stuff the resume.
 
@@ -449,10 +446,9 @@ ATS FRIENDLY
 +
 TRUTHFUL
 
-
 ======================================================================
 11. CURRENTLY EXPLORING — JD-RELEVANT SKILLS
-=====================================================================
+======================================================================
 
 Compare the target Job Description with my Master Resume.
 
@@ -528,9 +524,8 @@ Example:
 ]
 }
 
-The final Skills section should clearly distinguish between my existing
+The final Skills section should clearly distinguish between existing
 professional skills and technologies I am currently exploring.
-
 
 ======================================================================
 12. DO NOT EXAGGERATE SENIORITY
@@ -622,136 +617,271 @@ JOB DESCRIPTION
 
 def experience_ranges(text):
     """
-    Extract explicit experience requirements from text.
+    Extract actual job-experience requirements from text.
+
+    IMPORTANT:
+    We only treat numbers as experience when they are explicitly
+    connected to an experience-related phrase.
 
     Examples:
-        "3-5 years"        -> [(3, 5)]
-        "2 to 4 years"     -> [(2, 4)]
-        "5+ years"         -> [(5, None)]
-        "5 or more years"  -> [(5, None)]
-        "minimum 3 years"  -> [(3, None)]
-        "at least 3 years" -> [(3, None)]
-        "3 years"          -> [(3, None)]
 
-    A plain "N years" requirement is treated as a minimum requirement,
-    not an exact requirement.
+        "3-5 years"              -> [(3, 5)]
+        "2 to 4 years"           -> [(2, 4)]
+        "5+ years"               -> [(5, None)]
+        "3 years"                -> [(3, 3)]
+        "Experience: 0-2 Years"  -> [(0, 2)]
+        "Experience Required:
+         4-7 years"              -> [(4, 7)]
+
+    The parser intentionally does NOT interpret arbitrary numbers in
+    the description as experience.
+
+    For example:
+
+        "Java 8"
+        "20M records"
+        "2024"
+        "salary 5-8 LPA"
+
+    should not become experience requirements.
     """
+
     if not text:
         return []
 
-    t = str(text).lower().replace("–", "-").replace("—", "-")
+    # Normalize unicode dashes.
+    t = str(text).lower()
+    t = (
+        t.replace("–", "-")
+         .replace("—", "-")
+         .replace("−", "-")
+    )
 
     ranges = []
 
+    # ---------------------------------------------------------------
+    # Helper to avoid duplicate matches
+    # ---------------------------------------------------------------
+
     def add_range(minimum, maximum):
-        item = (
-            int(minimum),
-            None if maximum is None else int(maximum),
-        )
+        item = (int(minimum), maximum)
 
         if item not in ranges:
             ranges.append(item)
 
     # ---------------------------------------------------------------
-    # Explicit ranges:
+    # 1. Explicit experience ranges
+    #
+    # Examples:
     #   3-5 years
     #   3 to 5 years
+    #   3 - 5 yrs
     # ---------------------------------------------------------------
+
     for match in re.finditer(
-        r"\b(\d+)\s*(?:-|to)\s*(\d+)\s*(?:years?|yrs?)\b",
+        r"\b(\d+(?:\.\d+)?)\s*"
+        r"(?:-|to)\s*"
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(?:years?|yrs?)\b",
         t,
     ):
-        minimum = int(match.group(1))
-        maximum = int(match.group(2))
+        minimum = float(match.group(1))
+        maximum = float(match.group(2))
 
-        if minimum <= maximum:
-            add_range(minimum, maximum)
-
-    # ---------------------------------------------------------------
-    # Minimum requirements:
-    #   5+ years
-    #   5 or more years
-    # ---------------------------------------------------------------
-    for match in re.finditer(
-        r"\b(\d+)\s*(?:\+|or\s+more)\s*(?:years?|yrs?)\b",
-        t,
-    ):
-        add_range(match.group(1), None)
-
-    # ---------------------------------------------------------------
-    # Explicit minimum wording:
-    #   minimum 3 years
-    #   minimum of 3 years
-    #   at least 3 years
-    # ---------------------------------------------------------------
-    for match in re.finditer(
-        r"\b(?:minimum|at\s+least)"
-        r"(?:\s+of)?\s*(\d+)\s*(?:years?|yrs?)\b",
-        t,
-    ):
-        add_range(match.group(1), None)
-
-    # ---------------------------------------------------------------
-    # Plain "N years".
-    #
-    # Only treat it as an experience requirement when nearby text
-    # indicates experience/employment/role context.
-    # ---------------------------------------------------------------
-    for match in re.finditer(
-        r"\b(\d+)\s*(?:years?|yrs?)\b",
-        t,
-    ):
-        value = int(match.group(1))
-
-        if any(
-            minimum == value
-            and (
-                maximum is None
-                or maximum == value
-            )
-            for minimum, maximum in ranges
-        ):
-            continue
-
-        start = max(0, match.start() - 60)
-        end = min(len(t), match.end() + 60)
-        context = t[start:end]
-
-        experience_context = re.search(
-            r"(?:experience|exp\.?|professional|industry|"
-            r"development|software|backend|java|python|engineering)",
-            context,
+        add_range(
+            int(minimum) if minimum.is_integer() else minimum,
+            int(maximum) if maximum.is_integer() else maximum,
         )
 
-        if experience_context:
-            add_range(value, None)
+    # ---------------------------------------------------------------
+    # 2. Plus experience
+    #
+    # Examples:
+    #   5+ years
+    #   5 + years
+    #   5 or more years
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\b(\d+(?:\.\d+)?)\s*"
+        r"(?:\+|or\s+more)\s*"
+        r"(?:years?|yrs?)\b",
+        t,
+    ):
+        minimum = float(match.group(1))
+
+        add_range(
+            int(minimum) if minimum.is_integer() else minimum,
+            None,
+        )
+
+    # ---------------------------------------------------------------
+    # 3. "At least N years"
+    #
+    # Examples:
+    #   at least 3 years
+    #   minimum 3 years
+    #   minimum of 3 years
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\b(?:at\s+least|minimum(?:\s+of)?|"
+        r"min(?:imum)?(?:\s+of)?)\s*"
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(?:years?|yrs?)\b",
+        t,
+    ):
+        minimum = float(match.group(1))
+
+        add_range(
+            int(minimum) if minimum.is_integer() else minimum,
+            None,
+        )
+
+    # ---------------------------------------------------------------
+    # 4. "More than N years"
+    #
+    # Treat "more than 3 years" as requiring >3 years.
+    #
+    # For filtering against a 3-year candidate, this is rejected.
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\bmore\s+than\s+(\d+(?:\.\d+)?)\s*"
+        r"(?:years?|yrs?)\b",
+        t,
+    ):
+        minimum = float(match.group(1))
+
+        # Since candidate must have MORE than N, minimum effectively
+        # becomes N+epsilon. For integer comparison we use N+1.
+        minimum_value = (
+            int(minimum) + 1
+            if minimum.is_integer()
+            else minimum
+        )
+
+        add_range(minimum_value, None)
+
+    # ---------------------------------------------------------------
+    # 5. Plain "N years of experience"
+    #
+    # Examples:
+    #   3 years of experience
+    #   5 yrs experience
+    #   2 years experience required
+    #
+    # This is treated as minimum N years.
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\b(\d+(?:\.\d+)?)\s*"
+        r"(?:years?|yrs?)\s+"
+        r"(?:of\s+)?"
+        r"experience\b",
+        t,
+    ):
+        value = float(match.group(1))
+
+        add_range(
+            int(value) if value.is_integer() else value,
+            None,
+        )
+
+    # ---------------------------------------------------------------
+    # 6. "Experience: N years"
+    #
+    # Examples:
+    #   Experience: 3 years
+    #   Experience Required: 5 years
+    #   Experience - 2 years
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\bexperience\b"
+        r"(?:\s+(?:required|needed|preferred|desired))?"
+        r"\s*[:=-]\s*"
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(?:years?|yrs?)\b",
+        t,
+    ):
+        value = float(match.group(1))
+
+        add_range(
+            int(value) if value.is_integer() else value,
+            None,
+        )
+
+    # ---------------------------------------------------------------
+    # 7. Experience context followed by a range without "years"
+    #
+    # Examples:
+    #   Experience Required: 0-2
+    #   Experience: 4-7
+    #
+    # This is deliberately restricted to an experience context so that
+    # arbitrary numeric ranges elsewhere in a JD are ignored.
+    # ---------------------------------------------------------------
+
+    for match in re.finditer(
+        r"\bexperience\b"
+        r"(?:\s+(?:required|needed|preferred|desired))?"
+        r"\s*[:=-]\s*"
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(?:-|to)\s*"
+        r"(\d+(?:\.\d+)?)"
+        r"(?!\s*(?:lpa|lakhs?|cr|crore|gb|mb|k|%))",
+        t,
+    ):
+        minimum = float(match.group(1))
+        maximum = float(match.group(2))
+
+        add_range(
+            int(minimum) if minimum.is_integer() else minimum,
+            int(maximum) if maximum.is_integer() else maximum,
+        )
+
+    # ---------------------------------------------------------------
+    # Sort by minimum experience.
+    # ---------------------------------------------------------------
+
+    ranges.sort(
+        key=lambda x: (
+            float(x[0]),
+            float(x[1]) if x[1] is not None else float("inf"),
+        )
+    )
 
     return ranges
 
 
-def eligible(job, candidate_exp):
+def eligible(job, max_exp):
     """
-    Determine whether the candidate is compatible with the job's
-    experience requirement.
+    Determine whether a job is eligible for the candidate.
 
-    Candidate experience is 3 years.
+    Candidate experience:
+        max_exp
 
-    Rules:
+    Rule:
+        ONLY the minimum required experience matters.
 
-        0-2 years  -> eligible
-        1-3 years  -> eligible
-        2-7 years  -> eligible
-        3-5 years  -> eligible
-        3+ years   -> eligible
-        4-7 years  -> NOT eligible
-        5+ years   -> NOT eligible
+    Therefore, with 3 years of experience:
 
-    A lower experience requirement is not a reason to reject a job.
+        0-1 years  -> ACCEPT
+        0-2 years  -> ACCEPT
+        1-2 years  -> ACCEPT
+        1-3 years  -> ACCEPT
+        2-3 years  -> ACCEPT
+        2-5 years  -> ACCEPT
+        2-7 years  -> ACCEPT
+        3-5 years  -> ACCEPT
+        3+ years   -> ACCEPT
 
-    A bounded range is accepted when candidate_exp falls inside it.
+        4-7 years  -> REJECT
+        5+ years   -> REJECT
+        6 years    -> REJECT
 
-    A minimum-only requirement is accepted when candidate_exp is greater
-    than or equal to the minimum.
+    The upper bound is intentionally ignored.
     """
 
     experience_text = job.get("experience", "") or ""
@@ -761,17 +891,22 @@ def eligible(job, candidate_exp):
 
     ranges = experience_ranges(combined_text)
 
+    # No explicit experience requirement -> allow the job.
     if not ranges:
         return True
 
     for minimum, maximum in ranges:
 
-        # Candidate does not meet the minimum requirement.
-        if candidate_exp < minimum:
-            return False
-
-        # Candidate is above the maximum of a bounded range.
-        if maximum is not None and candidate_exp > maximum:
+        # Only minimum experience matters.
+        #
+        # Example:
+        #   2-7 years with candidate experience 3
+        #
+        # minimum = 2
+        # candidate = 3
+        #
+        # Therefore ACCEPT.
+        if minimum > max_exp:
             return False
 
     return True
@@ -783,6 +918,7 @@ def eligible(job, candidate_exp):
 
 def normalize_text(text):
     """Normalize text for duplicate detection."""
+
     if not text:
         return ""
 
@@ -801,6 +937,7 @@ def normalize_url(url):
     Other query parameters are tracking/session parameters and are
     intentionally discarded.
     """
+
     if not url:
         return ""
 
@@ -812,9 +949,13 @@ def normalize_url(url):
         parsed = urlparse(url)
 
         # Indeed job URLs:
+        #
         # https://in.indeed.com/rc/clk?jk=<job_id>&...
+        #
         if "indeed.com" in parsed.netloc.lower():
+
             params = parse_qs(parsed.query)
+
             job_key = params.get("jk", [None])[0]
 
             if job_key:
@@ -824,7 +965,7 @@ def normalize_url(url):
                     f"{parsed.path}?jk={job_key}"
                 )
 
-        # Generic URL normalization
+        # Generic URL normalization.
         normalized = (
             f"{parsed.scheme}://"
             f"{parsed.netloc}"
@@ -842,6 +983,7 @@ def dedupe(jobs, debug=False):
     Remove duplicate jobs using multiple levels of matching.
 
     Priority:
+
     1. Exact normalized URL
     2. Source + normalized title + company
 
@@ -854,6 +996,7 @@ def dedupe(jobs, debug=False):
     out = []
 
     for job in jobs:
+
         source_raw = job.get("source", "")
         title_raw = job.get("title", "")
         company_raw = job.get("company", "")
@@ -861,21 +1004,33 @@ def dedupe(jobs, debug=False):
         source = normalize_text(source_raw)
         title = normalize_text(title_raw)
         company = normalize_text(company_raw)
-        url = normalize_url(job.get("url", ""))
+
+        url = normalize_url(
+            job.get("url", "")
+        )
 
         # -----------------------------------------------------------
         # First: URL-based deduplication
         # -----------------------------------------------------------
+
         if url:
+
             url_key = url
 
             if url_key in seen_urls:
+
                 if debug:
                     print(
                         f"  DEDUPE REMOVE [URL] "
-                        f"{source_raw} | {title_raw} | {company_raw}"
+                        f"{source_raw} | "
+                        f"{title_raw} | "
+                        f"{company_raw}"
                     )
-                    print(f"    URL: {url}")
+
+                    print(
+                        f"    URL: {url}"
+                    )
+
                 continue
 
             seen_urls.add(url_key)
@@ -883,6 +1038,7 @@ def dedupe(jobs, debug=False):
         # -----------------------------------------------------------
         # Second: title + company deduplication
         # -----------------------------------------------------------
+
         identity_key = (
             source,
             title,
@@ -890,15 +1046,24 @@ def dedupe(jobs, debug=False):
         )
 
         if identity_key in seen_job_identity:
+
             if debug:
                 print(
                     f"  DEDUPE REMOVE [TITLE+COMPANY] "
-                    f"{source_raw} | {title_raw} | {company_raw}"
+                    f"{source_raw} | "
+                    f"{title_raw} | "
+                    f"{company_raw}"
                 )
-                print(f"    Identity: {identity_key}")
+
+                print(
+                    f"    Identity: {identity_key}"
+                )
+
             continue
 
-        seen_job_identity.add(identity_key)
+        seen_job_identity.add(
+            identity_key
+        )
 
         out.append(job)
 
@@ -910,9 +1075,14 @@ def dedupe(jobs, debug=False):
 # -------------------------------------------------------------------
 
 def rank(job):
+
     text = " ".join(
         str(job.get(k, ""))
-        for k in ("title", "description", "skills")
+        for k in (
+            "title",
+            "description",
+            "skills",
+        )
     ).lower()
 
     score = 0
@@ -931,10 +1101,13 @@ def rank(job):
         "docker",
         "kubernetes",
     ]:
+
         if s in text:
             score += 2
 
-    title = (job.get("title") or "").lower()
+    title = (
+        job.get("title") or ""
+    ).lower()
 
     for s in [
         "java backend developer",
@@ -942,6 +1115,7 @@ def rank(job):
         "backend developer",
         "software engineer",
     ]:
+
         if s in title:
             score += 4
 
@@ -955,6 +1129,7 @@ def rank(job):
         "ui developer",
         "ios",
     ]:
+
         if s in title:
             score -= 10
 
@@ -971,12 +1146,21 @@ def build_resume_prompt(job):
     into the Resume Prompt column for this specific job.
     """
 
-    description = job.get("description", "") or ""
+    description = (
+        job.get("description", "")
+        or ""
+    )
 
     return (
         RESUME_PROMPT
-        .replace("{{GENERIC_RESUME_TEX}}", GENERIC_RESUME_TEX)
-        .replace("{{JOB_DESCRIPTION}}", description)
+        .replace(
+            "{{GENERIC_RESUME_TEX}}",
+            GENERIC_RESUME_TEX
+        )
+        .replace(
+            "{{JOB_DESCRIPTION}}",
+            description
+        )
     )
 
 
@@ -985,10 +1169,16 @@ def build_resume_prompt(job):
 # -------------------------------------------------------------------
 
 def write_excel(jobs, path):
+
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     wb = Workbook()
+
     ws = wb.active
     ws.title = "Jobs"
 
@@ -1007,7 +1197,11 @@ def write_excel(jobs, path):
 
     ws.append(headers)
 
-    for i, job in enumerate(jobs, 1):
+    for i, job in enumerate(
+        jobs,
+        1
+    ):
+
         ws.append([
             i,
             job.get("source", ""),
@@ -1021,42 +1215,80 @@ def write_excel(jobs, path):
             build_resume_prompt(job),
         ])
 
-        # Make the job URL clickable
-        url_cell = ws.cell(row=ws.max_row, column=9)
-        url = job.get("url", "")
+        # Make the job URL clickable.
+        url_cell = ws.cell(
+            row=ws.max_row,
+            column=9
+        )
+
+        url = job.get(
+            "url",
+            ""
+        )
 
         if url:
+
             url_cell.value = "Open Job"
             url_cell.hyperlink = url
             url_cell.style = "Hyperlink"
 
-    # Adjust column widths
-    for col in range(1, len(headers) + 1):
-        letter = get_column_letter(col)
+    # Adjust column widths.
+    for col in range(
+        1,
+        len(headers) + 1
+    ):
+
+        letter = get_column_letter(
+            col
+        )
 
         max_len = max(
             [
-                len(str(ws.cell(r, col).value or ""))
-                for r in range(1, ws.max_row + 1)
+                len(
+                    str(
+                        ws.cell(
+                            r,
+                            col
+                        ).value
+                        or ""
+                    )
+                )
+                for r in range(
+                    1,
+                    ws.max_row + 1
+                )
             ]
             or [10]
         )
 
-        ws.column_dimensions[letter].width = min(
-            max(max_len + 2, 12),
+        ws.column_dimensions[
+            letter
+        ].width = min(
+            max(
+                max_len + 2,
+                12
+            ),
             55,
         )
 
-    # Keep the spreadsheet easy to navigate
+    # Keep spreadsheet easy to navigate.
     ws.freeze_panes = "A2"
 
-    # Wrap long JD/prompt cells
+    # Wrap long JD/prompt cells.
     for row in ws.iter_rows():
+
         for cell in row:
-            if cell.column in (8, 10):
-                cell.alignment = cell.alignment.copy(
-                    wrap_text=True,
-                    vertical="top",
+
+            if cell.column in (
+                8,
+                10,
+            ):
+
+                cell.alignment = (
+                    cell.alignment.copy(
+                        wrap_text=True,
+                        vertical="top",
+                    )
                 )
 
     wb.save(path)
@@ -1066,107 +1298,140 @@ def write_excel(jobs, path):
 # Main pipeline
 # -------------------------------------------------------------------
 
-def experience_rejection_reason(job, candidate_exp):
+def experience_rejection_reason(job, max_exp):
     """
-    Return the exact experience requirement that causes a job to
-    be rejected, or None when the job is eligible.
+    Return the experience requirement that causes a job to be rejected.
 
-    A lower experience requirement is allowed.
+    IMPORTANT:
+    Only the minimum required experience matters.
+
+    Therefore:
+
+        0-2 years -> None
+        2-7 years -> None
+        3-5 years -> None
+        3+ years  -> None
+
+    But:
+
+        4-7 years -> "4-7 years"
+        5+ years  -> "5+ years"
+        6 years   -> "6+ years"
     """
 
-    experience_text = job.get("experience", "") or ""
-    description_text = job.get("description", "") or ""
+    experience_text = (
+        job.get("experience", "")
+        or ""
+    )
 
-    combined_text = f"{experience_text} {description_text}"
+    description_text = (
+        job.get("description", "")
+        or ""
+    )
 
-    ranges = experience_ranges(combined_text)
+    combined_text = (
+        f"{experience_text} "
+        f"{description_text}"
+    )
+
+    ranges = experience_ranges(
+        combined_text
+    )
 
     for minimum, maximum in ranges:
 
-        # Candidate does not meet the minimum.
-        if candidate_exp < minimum:
+        # Only minimum matters.
+        if minimum > max_exp:
+
             if maximum is None:
                 return f"{minimum}+ years"
 
-            return f"{minimum}-{maximum} years"
-
-        # Candidate exceeds a bounded range.
-        if maximum is not None and candidate_exp > maximum:
-            return f"{minimum}-{maximum} years"
+            return (
+                f"{minimum}-{maximum} years"
+            )
 
     return None
 
 
 def combine_and_write(jobs, config):
-    print("\nCombining results...")
 
-    print(f"Jobs received from scrapers: {len(jobs)}")
+    print(
+        "\nCombining results..."
+    )
+
+    print(
+        f"Jobs received from scrapers: "
+        f"{len(jobs)}"
+    )
 
     # ---------------------------------------------------------------
     # Stage 1: deduplication
     # ---------------------------------------------------------------
+
     before_dedupe = len(jobs)
 
     jobs = dedupe(
         jobs,
-        debug=True,
+        debug=True
     )
 
     after_dedupe = len(jobs)
 
     print(
-        f"After deduplication: {after_dedupe} "
-        f"(removed {before_dedupe - after_dedupe})"
+        f"After deduplication: "
+        f"{after_dedupe} "
+        f"(removed "
+        f"{before_dedupe - after_dedupe})"
     )
 
     # ---------------------------------------------------------------
     # Stage 2: experience filtering
     # ---------------------------------------------------------------
-    #
-    # This is the candidate's actual experience, not a maximum allowed
-    # experience requirement.
-    #
-    # A candidate with 3 years can apply to:
-    #   0-2, 1-3, 2-5, 2-7, 3-5, 3+ years
-    #
-    # But not:
-    #   4-7, 5+, 6-10, etc.
-    # ---------------------------------------------------------------
-    candidate_exp = config.get(
-        "candidate_experience",
-        3,
-    )
+
+    max_exp = config[
+        "max_experience_requirement"
+    ]
 
     eligible_jobs = []
     rejected_jobs = []
 
     for job in jobs:
+
         reason = experience_rejection_reason(
             job,
-            candidate_exp,
+            max_exp
         )
 
         if reason is None:
-            eligible_jobs.append(job)
+
+            eligible_jobs.append(
+                job
+            )
+
         else:
+
             rejected_jobs.append(
-                (
-                    job,
-                    reason,
-                )
+                (job, reason)
             )
 
     print(
-        f"After experience filtering: {len(eligible_jobs)} "
-        f"(removed {len(rejected_jobs)})"
+        f"After experience filtering: "
+        f"{len(eligible_jobs)} "
+        f"(removed "
+        f"{len(rejected_jobs)})"
     )
 
     if rejected_jobs:
-        print("\nExperience-filtered jobs:")
+
+        print(
+            "\nExperience-filtered jobs:"
+        )
 
         for job, reason in rejected_jobs:
+
             print(
-                f"  REMOVED: {job.get('source', '')} | "
+                f"  REMOVED: "
+                f"{job.get('source', '')} | "
                 f"{job.get('title', '')} | "
                 f"{job.get('company', '')}"
             )
@@ -1185,41 +1450,61 @@ def combine_and_write(jobs, config):
     # ---------------------------------------------------------------
     # Stage 3: ranking
     # ---------------------------------------------------------------
+
     jobs.sort(
         key=rank,
-        reverse=True,
+        reverse=True
     )
 
-    print("\nFinal jobs by source:")
+    print(
+        "\nFinal jobs by source:"
+    )
 
     source_counts = {}
 
     for job in jobs:
+
         source = job.get(
             "source",
-            "Unknown",
+            "Unknown"
         )
 
         source_counts[source] = (
-            source_counts.get(source, 0) + 1
+            source_counts.get(
+                source,
+                0
+            ) + 1
         )
 
     for source, count in source_counts.items():
+
         print(
             f"  {source}: {count}"
         )
 
+    # ---------------------------------------------------------------
+    # Stage 4: write output
+    # ---------------------------------------------------------------
+
     out_dir = Path("jobs")
+
     out_dir.mkdir(
         exist_ok=True
     )
 
-    xlsx = out_dir / "job-tracker.xlsx"
-    js = out_dir / "jobs.json"
+    xlsx = (
+        out_dir /
+        "job-tracker.xlsx"
+    )
+
+    js = (
+        out_dir /
+        "jobs.json"
+    )
 
     write_excel(
         jobs,
-        xlsx,
+        xlsx
     )
 
     js.write_text(

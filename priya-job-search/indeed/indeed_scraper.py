@@ -12,84 +12,16 @@ from playwright.sync_api import (
 SEARCH_URL = "https://in.indeed.com/jobs"
 
 
-# ============================================================
-# GENERAL HELPERS
-# ============================================================
-
 def clean_text(text):
-    """
-    Normalize whitespace.
-    """
     if not text:
         return ""
 
-    return " ".join(str(text).split())
+    text = html.unescape(str(text))
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
 
+    return " ".join(text.split())
 
-def clean_description(value):
-    """
-    Convert description HTML/text into clean plain text.
-    """
-
-    if value is None:
-        return ""
-
-    if isinstance(value, dict):
-        # Common possible fields
-        for key in [
-            "text",
-            "html",
-            "content",
-            "value",
-            "description",
-            "descriptionText",
-            "descriptionHtml",
-        ]:
-            if key in value:
-                result = clean_description(value[key])
-
-                if result:
-                    return result
-
-        return ""
-
-    if isinstance(value, list):
-        parts = []
-
-        for item in value:
-            text = clean_description(item)
-
-            if text:
-                parts.append(text)
-
-        return clean_text(" ".join(parts))
-
-    text = str(value)
-
-    # Decode escaped HTML entities
-    text = html.unescape(text)
-
-    # Convert common HTML line breaks to spaces
-    text = re.sub(
-        r"<br\s*/?>",
-        "\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Remove HTML tags
-    text = re.sub(
-        r"<[^>]+>",
-        " ",
-        text,
-    )
-
-    return clean_text(text)
-
-
-# ============================================================
-# JOB ID / URL HELPERS
-# ============================================================
 
 def extract_job_id(href):
     """
@@ -97,7 +29,6 @@ def extract_job_id(href):
 
     Example:
         /viewjob?jk=abc123
-        /rc/clk?jk=abc123
     """
 
     if not href:
@@ -105,7 +36,7 @@ def extract_job_id(href):
 
     match = re.search(
         r"[?&]jk=([a-zA-Z0-9]+)",
-        href,
+        href
     )
 
     if match:
@@ -136,10 +67,6 @@ def make_absolute_url(href):
     return href
 
 
-# ============================================================
-# CARD HELPERS
-# ============================================================
-
 def get_text(card, selectors):
     """
     Try multiple selectors and return the first
@@ -147,12 +74,8 @@ def get_text(card, selectors):
     """
 
     for selector in selectors:
-
         try:
-
-            element = card.locator(
-                selector
-            ).first
+            element = card.locator(selector).first
 
             if element.count() == 0:
                 continue
@@ -175,23 +98,19 @@ def get_text(card, selectors):
 def get_attribute(card, selectors, attribute):
     """
     Try multiple selectors and return the first
-    non-empty attribute.
+    non-empty attribute value.
     """
 
     for selector in selectors:
-
         try:
-
-            element = card.locator(
-                selector
-            ).first
+            element = card.locator(selector).first
 
             if element.count() == 0:
                 continue
 
             value = element.get_attribute(
                 attribute,
-                timeout=3000,
+                timeout=3000
             )
 
             if value:
@@ -208,12 +127,10 @@ def extract_title(card):
         card,
         [
             "h2.jobTitle span",
-            "h3.jobTitle span",
             "h2.jobTitle",
-            "h3.jobTitle",
             "a.jcs-JobTitle",
             "[data-testid='job-title']",
-        ],
+        ]
     )
 
 
@@ -224,7 +141,7 @@ def extract_company(card):
             "[data-testid='company-name']",
             ".companyName",
             "[class*='companyName']",
-        ],
+        ]
     )
 
 
@@ -235,7 +152,7 @@ def extract_location(card):
             "[data-testid='text-location']",
             ".companyLocation",
             "[class*='companyLocation']",
-        ],
+        ]
     )
 
 
@@ -250,7 +167,7 @@ def extract_salary(card):
             "[data-testid='attribute_snippet_testid salary-snippet-container']",
             ".salary-snippet-container",
             "[class*='salary-snippet']",
-        ],
+        ]
     )
 
 
@@ -264,21 +181,20 @@ def extract_job_url(card):
         [
             "a.jcs-JobTitle",
             "h2.jobTitle a",
-            "h3.jobTitle a",
             "a[data-jk]",
             "a[href*='jk=']",
             "a[href*='/viewjob']",
         ],
-        "href",
+        "href"
     )
 
     return make_absolute_url(href)
 
 
-def extract_card_snippet(card):
+def extract_description(card):
     """
-    Indeed search cards may sometimes expose a short
-    snippet. Use it as a fallback only.
+    Extract description/snippet directly from the search card
+    when Indeed exposes one.
     """
 
     return get_text(
@@ -287,13 +203,9 @@ def extract_card_snippet(card):
             ".job-snippet",
             "[class*='job-snippet']",
             "[data-testid='job-snippet']",
-        ],
+        ]
     )
 
-
-# ============================================================
-# JOB CARD DISCOVERY
-# ============================================================
 
 def find_job_cards(page):
     """
@@ -309,17 +221,15 @@ def find_job_cards(page):
     ]
 
     for selector in selectors:
-
         try:
-
-            locator = page.locator(
-                selector
-            )
+            locator = page.locator(selector)
 
             count = locator.count()
 
             print(
-                f"    Selector {selector}: {count}"
+                f"    Selector "
+                f"{selector}: "
+                f"{count}"
             )
 
             if count > 0:
@@ -331,231 +241,443 @@ def find_job_cards(page):
     return None
 
 
-# ============================================================
-# EMBEDDED INDEED DATA
-# ============================================================
-
-def get_initial_data(page):
+def find_description_in_json(obj):
     """
-    Read Indeed's window._initialData object directly
-    from the browser.
+    Recursively search an Indeed embedded JSON object for
+    job-description-like fields.
 
-    The search page currently embeds job-detail data
-    inside this object.
+    We prioritize fields named jobDescription because Indeed's
+    _initialData commonly stores the selected job description
+    there.
     """
 
-    try:
+    exact_candidates = []
+    fallback_candidates = []
 
-        data = page.evaluate(
-            """
-            () => {
-                if (typeof window._initialData === "undefined") {
-                    return null;
-                }
+    def walk(node):
+        if isinstance(node, dict):
 
-                return window._initialData;
-            }
-            """
-        )
+            for key, value in node.items():
 
-        return data
+                key_lower = str(key).lower()
 
-    except Exception as e:
+                if isinstance(value, str):
 
-        print(
-            f"    Could not read window._initialData: {e}"
-        )
+                    text = clean_text(value)
 
-        return None
+                    if len(text) < 100:
+                        continue
 
+                    if key_lower in {
+                        "jobdescription",
+                        "jobdescriptionhtml",
+                        "job_description",
+                        "job_description_html",
+                    }:
+                        exact_candidates.append(text)
 
-def find_values_by_keys(obj, target_keys):
-    """
-    Recursively search a nested JSON object.
+                    elif key_lower in {
+                        "description",
+                        "descriptiontext",
+                        "descriptionhtml",
+                    }:
+                        fallback_candidates.append(text)
 
-    Returns every value whose key matches one of
-    target_keys.
-    """
+                walk(value)
 
-    results = []
+        elif isinstance(node, list):
 
-    target_keys = {
-        key.lower()
-        for key in target_keys
-    }
-
-    def walk(value):
-
-        if isinstance(value, dict):
-
-            for key, child in value.items():
-
-                if str(key).lower() in target_keys:
-                    results.append(child)
-
-                walk(child)
-
-        elif isinstance(value, list):
-
-            for item in value:
+            for item in node:
                 walk(item)
 
     walk(obj)
 
-    return results
-
-
-def extract_description_from_initial_data(
-    initial_data,
-    job_id,
-):
-    """
-    Extract a useful job description from Indeed's
-    embedded _initialData.
-
-    We deliberately search recursively because Indeed's
-    internal JSON structure can change.
-    """
-
-    if not initial_data:
-        return ""
-
-    # --------------------------------------------------------
-    # First, try fields that are most likely to contain
-    # the actual job description.
-    # --------------------------------------------------------
-
-    candidate_keys = [
-        "descriptionHtml",
-        "jobDescriptionHtml",
-        "descriptionText",
-        "jobDescriptionText",
-        "jobDescription",
-        "description",
-    ]
-
-    candidates = find_values_by_keys(
-        initial_data,
-        candidate_keys,
-    )
-
-    best_description = ""
-
-    for candidate in candidates:
-
-        description = clean_description(
-            candidate
+    if exact_candidates:
+        return max(
+            exact_candidates,
+            key=len
         )
 
-        # Ignore tiny strings such as:
-        # "Job description" used as a label.
-        if len(description) < 80:
-            continue
-
-        if len(description) > len(best_description):
-            best_description = description
-
-    if best_description:
-        return best_description
-
-    # --------------------------------------------------------
-    # Fallback:
-    # Search for larger text-bearing fields inside the
-    # job-info area.
-    # --------------------------------------------------------
-
-    job_info_candidates = find_values_by_keys(
-        initial_data,
-        [
-            "jobInfoModel",
-            "jobInfoWrapperModel",
-            "jobDescriptionSectionModel",
-            "autoOpenTwoPaneViewjobResponse",
-        ],
-    )
-
-    for section in job_info_candidates:
-
-        nested_candidates = find_values_by_keys(
-            section,
-            candidate_keys,
+    if fallback_candidates:
+        return max(
+            fallback_candidates,
+            key=len
         )
-
-        for candidate in nested_candidates:
-
-            description = clean_description(
-                candidate
-            )
-
-            if len(description) < 80:
-                continue
-
-            if len(description) > len(best_description):
-                best_description = description
-
-    return best_description
-
-
-# ============================================================
-# SEARCH PAGE DESCRIPTION EXTRACTION
-# ============================================================
-
-def extract_description_from_search_page(
-    page,
-    job_id,
-):
-    """
-    Extract the job description from Indeed's embedded
-    search-page data.
-
-    Important:
-    We DO NOT open /viewjob because that endpoint was
-    returning HTTP 403.
-
-    Instead we use window._initialData already present
-    on the successful search page.
-    """
-
-    initial_data = get_initial_data(
-        page
-    )
-
-    if not initial_data:
-        print(
-            "        _initialData not available"
-        )
-
-        return ""
-
-    description = (
-        extract_description_from_initial_data(
-            initial_data,
-            job_id,
-        )
-    )
-
-    if description:
-
-        print(
-            f"        Embedded description: "
-            f"{len(description)} chars"
-        )
-
-        return description
-
-    print(
-        "        Embedded description not found"
-    )
 
     return ""
 
 
-# ============================================================
-# MAIN INDEED SCRAPER
-# ============================================================
+def get_embedded_job_data(page):
+    """
+    Read Indeed's window._initialData from the current page.
+
+    Returns:
+        {
+            "job_id": "...",
+            "description": "..."
+        }
+    """
+
+    try:
+        data = page.evaluate(
+            """
+            () => {
+                return window._initialData || null;
+            }
+            """
+        )
+
+        if not data:
+            return {
+                "job_id": "",
+                "description": "",
+            }
+
+        selected_job_id = str(
+            data.get("autoOpenTwoPaneJobKey")
+            or data.get(
+                "autoOpenJobAttributes",
+                {}
+            ).get("jobKey")
+            or ""
+        )
+
+        response = data.get(
+            "autoOpenTwoPaneViewjobResponse",
+            {}
+        )
+
+        body = response.get(
+            "body",
+            {}
+        )
+
+        description = find_description_in_json(
+            body
+        )
+
+        return {
+            "job_id": selected_job_id,
+            "description": description,
+        }
+
+    except Exception as e:
+        print(
+            f"        Embedded data extraction failed: {e}"
+        )
+
+        return {
+            "job_id": "",
+            "description": "",
+        }
+
+
+def extract_description_from_two_pane(
+    page,
+    expected_job_id,
+):
+    """
+    Extract the full description from Indeed's two-pane
+    job view.
+
+    We deliberately verify the selected job ID before using
+    embedded JSON so that one job's description is not copied
+    to another job.
+    """
+
+    # ---------------------------------------------------------
+    # 1. Try description DOM in the currently selected pane
+    # ---------------------------------------------------------
+
+    description_selectors = [
+        "#jobDescriptionText",
+        "[data-testid='jobDescriptionText']",
+        ".jobsearch-JobComponent-description",
+        "[class*='jobDescription']",
+    ]
+
+    for selector in description_selectors:
+
+        try:
+            locator = page.locator(
+                selector
+            ).first
+
+            if locator.count() == 0:
+                continue
+
+            text = clean_text(
+                locator.inner_text(
+                    timeout=3000
+                )
+            )
+
+            if len(text) >= 100:
+                print(
+                    f"        Description found in DOM "
+                    f"using {selector} "
+                    f"({len(text)} chars)"
+                )
+
+                return text
+
+        except Exception:
+            continue
+
+    # ---------------------------------------------------------
+    # 2. Try embedded window._initialData
+    # ---------------------------------------------------------
+
+    embedded = get_embedded_job_data(
+        page
+    )
+
+    embedded_job_id = embedded["job_id"]
+    embedded_description = embedded["description"]
+
+    if embedded_job_id:
+        print(
+            f"        Embedded selected job ID: "
+            f"{embedded_job_id}"
+        )
+
+    if expected_job_id:
+        print(
+            f"        Expected job ID: "
+            f"{expected_job_id}"
+        )
+
+    # ---------------------------------------------------------
+    # IMPORTANT:
+    #
+    # Only accept embedded description when the selected
+    # job really is the job we are currently processing.
+    # ---------------------------------------------------------
+
+    if (
+        expected_job_id
+        and embedded_job_id
+        and embedded_job_id != expected_job_id
+    ):
+        print(
+            "        Embedded data belongs to a different "
+            "job. Ignoring it."
+        )
+
+        return ""
+
+    if embedded_description:
+        print(
+            f"        Embedded description found "
+            f"({len(embedded_description)} chars)"
+        )
+
+        return embedded_description
+
+    return ""
+
+
+def click_job_card(page, card):
+    """
+    Click the job card/title so Indeed opens that job in
+    the two-pane view.
+
+    We intentionally click the search result rather than
+    navigating directly to /viewjob because direct detail
+    navigation was returning 403 in the current scraper.
+    """
+
+    selectors = [
+        "a.jcs-JobTitle",
+        "h2.jobTitle",
+        "[data-testid='job-title']",
+    ]
+
+    for selector in selectors:
+
+        try:
+            locator = card.locator(
+                selector
+            ).first
+
+            if locator.count() == 0:
+                continue
+
+            locator.scroll_into_view_if_needed(
+                timeout=3000
+            )
+
+            locator.click(
+                timeout=5000
+            )
+
+            return True
+
+        except Exception:
+            continue
+
+    # Last attempt: click the card itself.
+
+    try:
+        card.scroll_into_view_if_needed(
+            timeout=3000
+        )
+
+        card.click(
+            timeout=5000
+        )
+
+        return True
+
+    except Exception:
+        return False
+
+
+def wait_for_selected_job(
+    page,
+    expected_job_id,
+    timeout_ms=7000,
+):
+    """
+    Wait until Indeed's two-pane view appears to have
+    selected the expected job.
+
+    Returns True if the selected job ID matches.
+    """
+
+    start = time.time()
+
+    while (
+        (time.time() - start) * 1000
+        < timeout_ms
+    ):
+
+        try:
+            embedded = get_embedded_job_data(
+                page
+            )
+
+            selected_job_id = embedded[
+                "job_id"
+            ]
+
+            if (
+                selected_job_id
+                and selected_job_id == expected_job_id
+            ):
+                return True
+
+        except Exception:
+            pass
+
+        # Also check whether the description DOM
+        # has appeared.
+
+        try:
+            for selector in [
+                "#jobDescriptionText",
+                "[data-testid='jobDescriptionText']",
+                ".jobsearch-JobComponent-description",
+            ]:
+
+                locator = page.locator(
+                    selector
+                ).first
+
+                if locator.count() == 0:
+                    continue
+
+                text = clean_text(
+                    locator.inner_text(
+                        timeout=1000
+                    )
+                )
+
+                if len(text) >= 100:
+                    return True
+
+        except Exception:
+            pass
+
+        page.wait_for_timeout(300)
+
+    return False
+
+
+def extract_full_description(
+    page,
+    card,
+    job_id,
+):
+    """
+    Click the selected search result and retrieve its
+    full description.
+
+    If the full description cannot be obtained, return the
+    search-card snippet as fallback.
+    """
+
+    snippet = extract_description(
+        card
+    )
+
+    if not job_id:
+        return snippet
+
+    print(
+        "        Opening two-pane job view..."
+    )
+
+    clicked = click_job_card(
+        page,
+        card
+    )
+
+    if not clicked:
+        print(
+            "        Could not click job card."
+        )
+
+        return snippet
+
+    # Give Indeed a moment to update the two-pane view.
+
+    matched = wait_for_selected_job(
+        page,
+        job_id,
+        timeout_ms=7000,
+    )
+
+    if not matched:
+        print(
+            "        Could not confirm selected job ID."
+        )
+
+    # Give the description a little additional time
+    # because the two-pane content can load after the
+    # selected job state changes.
+
+    page.wait_for_timeout(
+        1000
+    )
+
+    description = extract_description_from_two_pane(
+        page,
+        job_id,
+    )
+
+    if description:
+        return description
+
+    print(
+        "        Full description unavailable; "
+        "using search-card snippet."
+    )
+
+    return snippet
+
 
 def run_indeed(config):
-
     jobs = []
 
     queries = config["queries"]
@@ -563,24 +685,24 @@ def run_indeed(config):
 
     results_per_search = config.get(
         "results_per_search",
-        25,
+        25
     )
 
     headless = config.get(
         "headless",
-        False,
+        False
     )
 
-    # --------------------------------------------------------
-    # Indeed "last 1 day" filter
+    # Each query/location search gets its own fresh browser.
     #
-    # fromage=1 means jobs posted within the last day.
-    # --------------------------------------------------------
-
-    indeed_posted_within = config.get(
-        "indeed_posted_within",
-        1,
-    )
+    # This isolates individual searches so a block on one
+    # request does not automatically terminate the whole run.
+    #
+    # This is not intended to bypass a CAPTCHA or other
+    # access control.
+    #
+    # If a fresh browser receives a 403/block page, that search
+    # is skipped and we continue with the remaining searches.
 
     for query in queries:
 
@@ -592,13 +714,6 @@ def run_indeed(config):
             )
 
             captured_for_search = 0
-
-            # ------------------------------------------------
-            # Fresh browser for every query/location.
-            #
-            # This matches the version that previously
-            # worked better against Indeed's blocking.
-            # ------------------------------------------------
 
             with sync_playwright() as p:
 
@@ -623,27 +738,22 @@ def run_indeed(config):
                         },
                         locale="en-IN",
                         user_agent=(
-                            "Mozilla/5.0 "
-                            "(Macintosh; Intel Mac OS X 10_15_7) "
-                            "AppleWebKit/537.36 "
-                            "(KHTML, like Gecko) "
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/140.0.0.0 Safari/537.36"
                         ),
                     )
 
                     search_page = context.new_page()
 
-                    # --------------------------------------------
-                    # Only first result page.
-                    #
-                    # Pagination previously caused 403s.
-                    # --------------------------------------------
+                    # -------------------------------------------------
+                    # Open search page
+                    # -------------------------------------------------
 
                     url = (
                         f"{SEARCH_URL}"
                         f"?q={query}"
                         f"&l={location}"
-                        f"&fromage={indeed_posted_within}"
                     )
 
                     print(
@@ -655,11 +765,11 @@ def run_indeed(config):
                         response = search_page.goto(
                             url,
                             wait_until="domcontentloaded",
-                            timeout=30000,
+                            timeout=30000
                         )
 
                         search_page.wait_for_timeout(
-                            2500
+                            2000
                         )
 
                         status = (
@@ -669,7 +779,8 @@ def run_indeed(config):
                         )
 
                         print(
-                            f"    HTTP status: {status}"
+                            f"    HTTP status: "
+                            f"{status}"
                         )
 
                         page_title = clean_text(
@@ -681,22 +792,18 @@ def run_indeed(config):
                             f"{page_title}"
                         )
 
-                        # --------------------------------------------
-                        # Detect access blocks.
-                        # --------------------------------------------
-
-                        title_lower = (
-                            page_title.lower()
-                        )
+                        # -------------------------------------------------
+                        # Detect access-block pages
+                        # -------------------------------------------------
 
                         if (
                             status == 403
                             or "unusual traffic"
-                            in title_lower
+                            in page_title.lower()
                             or "access denied"
-                            in title_lower
+                            in page_title.lower()
                             or "just a moment"
-                            in title_lower
+                            in page_title.lower()
                         ):
 
                             print(
@@ -705,14 +812,15 @@ def run_indeed(config):
                             )
 
                             print(
-                                "    Skipping this search."
+                                "    Skipping this search and "
+                                "continuing with the next one."
                             )
 
                             continue
 
-                        # --------------------------------------------
-                        # Find cards.
-                        # --------------------------------------------
+                        # -------------------------------------------------
+                        # Find job cards
+                        # -------------------------------------------------
 
                         cards = find_job_cards(
                             search_page
@@ -733,9 +841,9 @@ def run_indeed(config):
                             f"{card_count} cards"
                         )
 
-                        # --------------------------------------------
-                        # Process cards.
-                        # --------------------------------------------
+                        # -------------------------------------------------
+                        # Process cards
+                        # -------------------------------------------------
 
                         for index in range(
                             card_count
@@ -780,33 +888,6 @@ def run_indeed(config):
                                 link
                             )
 
-                            # ------------------------------------
-                            # Description:
-                            #
-                            # First try embedded _initialData.
-                            # If unavailable, fall back to the
-                            # visible card snippet.
-                            # ------------------------------------
-
-                            description = ""
-
-                            if job_id:
-
-                                description = (
-                                    extract_description_from_search_page(
-                                        search_page,
-                                        job_id,
-                                    )
-                                )
-
-                            if not description:
-
-                                description = (
-                                    extract_card_snippet(
-                                        card
-                                    )
-                                )
-
                             print(
                                 f"\n      {title}"
                             )
@@ -832,18 +913,44 @@ def run_indeed(config):
                             )
 
                             print(
-                                f"        Description: "
-                                f"{len(description)} chars"
-                            )
-
-                            print(
                                 f"        URL: "
                                 f"{link}"
                             )
 
-                            # ------------------------------------
-                            # Store normalized job.
-                            # ------------------------------------
+                            # -------------------------------------------------
+                            # IMPORTANT:
+                            #
+                            # Actually retrieve the description here.
+                            # This is NOT just the old snippet assignment.
+                            # -------------------------------------------------
+
+                            description = (
+                                extract_full_description(
+                                    search_page,
+                                    card,
+                                    job_id,
+                                )
+                            )
+
+                            print(
+                                f"        Description: "
+                                f"{len(description)} chars"
+                            )
+
+                            if description:
+                                print(
+                                    f"        Description preview: "
+                                    f"{description[:300]}"
+                                )
+                            else:
+                                print(
+                                    "        Description: "
+                                    "NOT FOUND"
+                                )
+
+                            # -------------------------------------------------
+                            # Normalize to common job structure
+                            # -------------------------------------------------
 
                             jobs.append({
                                 "source": "Indeed",
@@ -861,13 +968,12 @@ def run_indeed(config):
 
                             captured_for_search += 1
 
-                            # Small delay between cards.
-                            time.sleep(0.5)
+                            time.sleep(1)
 
                     except PlaywrightTimeoutError:
 
                         print(
-                            "    Indeed first page timed out"
+                            "    Indeed search timed out."
                         )
 
                     except Exception as e:
@@ -876,36 +982,25 @@ def run_indeed(config):
                             f"    Indeed search failed: {e}"
                         )
 
-                    print(
-                        f"\n    captured: "
-                        f"{captured_for_search}"
-                    )
-
-                    # Small pause before the next
-                    # independent browser/search.
-                    time.sleep(2)
-
                 finally:
 
                     if search_page:
-
-                        try:
-                            search_page.close()
-                        except Exception:
-                            pass
+                        search_page.close()
 
                     if context:
-
-                        try:
-                            context.close()
-                        except Exception:
-                            pass
+                        context.close()
 
                     if browser:
+                        browser.close()
 
-                        try:
-                            browser.close()
-                        except Exception:
-                            pass
+            print(
+                f"\n    captured: "
+                f"{captured_for_search}"
+            )
+
+    print(
+        f"\n  Indeed total captured: "
+        f"{len(jobs)} jobs"
+    )
 
     return jobs
