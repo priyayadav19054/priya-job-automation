@@ -54,9 +54,10 @@ GENERIC_RESUME_TEX = r"""
 {\normalsize Backend Software Engineer}\\[2pt]
 \small +91 9350046768 ~$\bullet$~
 \href{mailto:priya2668135@gmail.com}{priya2668135@gmail.com} ~$\bullet$~
-\href{https://www.linkedin.com/in/priya-yadav-14a44419/}{LinkedIn} ~$\bullet$~
+\href{https://www.linkedin.com/in/priya-yadav-14a44419a/}{LinkedIn} ~$\bullet$~
 \href{https://github.com/precise-charmerr}{GitHub}
 \end{center}
+
 
 \vspace{1pt}
 
